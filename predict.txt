@@ -1,0 +1,47 @@
+from sklearn.svm import LinearSVC
+from sklearn.datasets import make_classification
+from sklearn.base import MetaEstimatorMixin, BaseEstimator
+from sklearn.utils.metaestimators import if_delegate_has_method
+
+svm = LinearSVC(random_state=0)
+X, y = make_classification(n_samples=100000, random_state=0)
+
+class CachedEstimator(BaseEstimator, MetaEstimatorMixin):
+    def __init__(self, estimator):
+        self.estimator = estimator
+
+    def fit(self, X, y, *fit_args, **fit_kwargs):
+        """Fit the wrapped estimator with data X, y"""
+        self.estimator.fit(X, y, *fit_args, **fit_kwargs)
+        return self
+
+    @if_delegate_has_method('estimator')
+    def predict(self, X, *predict_args, **predict_kargs):
+        """Cached prediction from the underlying estimator"""
+        if getattr(self, '_predict_X_id', 0) != id(X):
+            print("Predicting on original estimator")
+            self._predict = self.estimator.predict(X, *predict_args, **predict_kargs)
+            self._predict_X_id = id(X)
+
+        return self._predict
+
+import time
+
+fit_start = time.time()
+cached_svm = CachedEstimator(svm)
+cached_svm.fit(X, y)
+fit_time = time.time() - fit_start
+
+print("Fit done in %0.8fs" % fit_time)
+
+predict_start = time.time()
+pred_1 = cached_svm.predict(X)
+predict_time = time.time() - predict_start
+
+print("First predict time %0.4fms" % (predict_time * 1000))
+
+predict_start = time.time()
+pred_2 = cached_svm.predict(X)
+predict_time = time.time() - predict_start
+
+print("Second predict time %0.4fms" % (predict_time * 1000))
